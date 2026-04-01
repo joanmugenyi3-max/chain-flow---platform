@@ -1,0 +1,41 @@
+{
+  "name": "chainflow-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ChainFlow — AI-powered Supply Chain SaaS Platform",
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "infra:plan": "cd infra/terraform/environments/staging && terraform plan",
+    "infra:apply": "cd infra/terraform/environments/production && terraform apply",
+    "k8s:deploy:staging": "kubectl apply -k infra/k8s/overlays/staging",
+    "k8s:deploy:prod": "kubectl apply -k infra/k8s/overlays/production"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.2.0",
+    "commitlint": "^19.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.0"
+}

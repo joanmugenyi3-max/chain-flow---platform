@@ -1,0 +1,294 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL (Primary DB) ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: chainflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: chainflow
+      POSTGRES_PASSWORD: chainflow_dev_secret
+      POSTGRES_DB: chainflow_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chainflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Cache + Sessions + Queues) ────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: chainflow-redis
+    restart: unless-stopped
+    command: redis-server --requirepass chainflow_redis_secret --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Kafka + Zookeeper (Event Bus) ────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: chainflow-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: chainflow-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── Kafka UI (Dev only) ──────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: chainflow-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: chainflow-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # ── Frontend (Next.js / Vite) ────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: development
+    container_name: chainflow-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_BASE_URL=http://localhost:4000
+      - VITE_AI_ENGINE_URL=http://localhost:8000
+    depends_on:
+      - procurement-svc
+      - inventory-svc
+
+  # ── Procurement Service ──────────────────────────────────────────────
+  procurement-svc:
+    build:
+      context: .
+      dockerfile: services/procurement/Dockerfile
+      target: development
+    container_name: chainflow-procurement
+    restart: unless-stopped
+    ports:
+      - "4001:4001"
+    environment:
+      PORT: 4001
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: dev_jwt_secret_32_chars_minimum!!
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./services/procurement:/app/services/procurement
+
+  # ── Inventory Service ────────────────────────────────────────────────
+  inventory-svc:
+    build:
+      context: .
+      dockerfile: services/inventory/Dockerfile
+      target: development
+    container_name: chainflow-inventory
+    restart: unless-stopped
+    ports:
+      - "4002:4002"
+    environment:
+      PORT: 4002
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: dev_jwt_secret_32_chars_minimum!!
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/inventory:/app/services/inventory
+
+  # ── Logistics Service ────────────────────────────────────────────────
+  logistics-svc:
+    build:
+      context: .
+      dockerfile: services/logistics/Dockerfile
+      target: development
+    container_name: chainflow-logistics
+    restart: unless-stopped
+    ports:
+      - "4003:4003"
+    environment:
+      PORT: 4003
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: dev_jwt_secret_32_chars_minimum!!
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/logistics:/app/services/logistics
+
+  # ── Mining Service ───────────────────────────────────────────────────
+  mining-svc:
+    build:
+      context: .
+      dockerfile: services/mining/Dockerfile
+      target: development
+    container_name: chainflow-mining
+    restart: unless-stopped
+    ports:
+      - "4005:4005"
+    environment:
+      PORT: 4005
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: dev_jwt_secret_32_chars_minimum!!
+      IOT_SIMULATION_ENABLED: "true"
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/mining:/app/services/mining
+
+  # ── AI Engine (Python / FastAPI) ─────────────────────────────────────
+  ai-engine:
+    build:
+      context: .
+      dockerfile: services/ai-engine/Dockerfile
+    container_name: chainflow-ai-engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      KAFKA_BROKERS: kafka:29092
+      MODEL_REGISTRY_PATH: /app/models
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/ai-engine:/app/services/ai-engine
+      - ai_models:/app/models
+
+  # ── SaaS Core (Auth + Billing + Tenants) ────────────────────────────
+  saas-core:
+    build:
+      context: .
+      dockerfile: services/saas-core/Dockerfile
+      target: development
+    container_name: chainflow-saas-core
+    restart: unless-stopped
+    ports:
+      - "4007:4007"
+    environment:
+      PORT: 4007
+      DATABASE_URL: postgresql://chainflow:chainflow_dev_secret@postgres:5432/chainflow_db
+      REDIS_URL: redis://:chainflow_redis_secret@redis:6379
+      JWT_SECRET: dev_jwt_secret_32_chars_minimum!!
+      JWT_REFRESH_SECRET: dev_jwt_refresh_secret_32chars!!
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      GOOGLE_CLIENT_ID: google_oauth_placeholder
+      GOOGLE_CLIENT_SECRET: google_oauth_secret_placeholder
+      MS_CLIENT_ID: ms_oauth_placeholder
+      MS_CLIENT_SECRET: ms_oauth_secret_placeholder
+      NODE_ENV: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./services/saas-core:/app/services/saas-core
+
+  # ── API Gateway / Reverse Proxy (Kong or custom) ─────────────────────
+  api-gateway:
+    image: nginx:alpine
+    container_name: chainflow-gateway
+    restart: unless-stopped
+    ports:
+      - "4000:80"
+    volumes:
+      - ./infra/scripts/nginx-dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - procurement-svc
+      - inventory-svc
+      - logistics-svc
+      - mining-svc
+      - saas-core
+
+  # ── Adminer (DB UI for dev) ──────────────────────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: chainflow-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:
+  redis_data:
+  zookeeper_data:
+  kafka_data:
+  ai_models:
+
+networks:
+  default:
+    name: chainflow-network
+    driver: bridge

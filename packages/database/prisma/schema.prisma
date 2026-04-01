@@ -1,0 +1,1162 @@
+// ChainFlow Platform - Master Prisma Schema
+// PostgreSQL 16 | Multi-tenant architecture
+// Run: pnpm db:migrate && pnpm db:seed
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "postgresqlExtensions", "views"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [uuidOssp(map: "uuid-ossp"), pgcrypto, pg_trgm]
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MULTI-TENANT CORE
+// ═══════════════════════════════════════════════════════════════════════
+
+model Organization {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  slug        String   @unique
+  name        String
+  legalName   String?
+  industry    Industry
+  country     String   @db.Char(2)
+  currency    String   @default("USD") @db.Char(3)
+  timezone    String   @default("UTC")
+  locale      String   @default("en")
+  logoUrl     String?
+  plan        Plan     @default(STARTER)
+  isActive    Boolean  @default(true)
+  trialEndsAt DateTime?
+  settings    Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users              User[]
+  invitations        Invitation[]
+  suppliers          Supplier[]
+  purchaseOrders     PurchaseOrder[]
+  contracts          Contract[]
+  products           Product[]
+  warehouses         Warehouse[]
+  inventoryItems     InventoryItem[]
+  shipments          Shipment[]
+  vehicles           Vehicle[]
+  productionPlans    ProductionPlan[]
+  miningSites        MiningSite[]
+  kpiSnapshots       KpiSnapshot[]
+  aiInsights         AiInsight[]
+  subscriptions      Subscription[]
+  auditLogs          AuditLog[]
+
+  @@map("organizations")
+}
+
+enum Industry {
+  MINING
+  MANUFACTURING
+  RETAIL
+  PHARMACEUTICAL
+  FOOD_BEVERAGE
+  AUTOMOTIVE
+  ELECTRONICS
+  CONSTRUCTION
+  ENERGY
+  OTHER
+}
+
+enum Plan {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+  MINING_ENTERPRISE
+}
+
+model User {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String    @db.Uuid
+  email          String
+  firstName      String
+  lastName       String
+  passwordHash   String?
+  role           UserRole
+  permissions    String[]
+  avatarUrl      String?
+  locale         String    @default("en")
+  timezone       String    @default("UTC")
+  isActive       Boolean   @default(true)
+  lastLoginAt    DateTime?
+  mfaEnabled     Boolean   @default(false)
+  mfaSecret      String?
+  oauthProvider  String?
+  oauthId        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  refreshTokens   RefreshToken[]
+  auditLogs       AuditLog[]
+  kpiAlerts       KpiAlert[]
+
+  @@unique([organizationId, email])
+  @@index([email])
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ORG_ADMIN
+  OPERATIONS_MANAGER
+  PROCUREMENT_MANAGER
+  WAREHOUSE_MANAGER
+  LOGISTICS_MANAGER
+  MINING_SUPERVISOR
+  ANALYST
+  VIEWER
+}
+
+model Session {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @db.Uuid
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model Invitation {
+  id             String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String     @db.Uuid
+  email          String
+  role           UserRole
+  token          String     @unique
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  createdAt      DateTime   @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("invitations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUBSCRIPTION & BILLING
+// ═══════════════════════════════════════════════════════════════════════
+
+model Subscription {
+  id                   String             @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId       String             @db.Uuid
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  plan                 Plan
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  trialStart           DateTime?
+  trialEnd             DateTime?
+  metadata             Json               @default("{}")
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  invoices     Invoice[]
+
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+  INCOMPLETE
+}
+
+model Invoice {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  subscriptionId String        @db.Uuid
+  stripeInvoiceId String?
+  amount         Decimal       @db.Decimal(10, 2)
+  currency       String        @db.Char(3)
+  status         InvoiceStatus
+  paidAt         DateTime?
+  dueDate        DateTime
+  pdfUrl         String?
+  createdAt      DateTime      @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PROCUREMENT MODULE
+// ═══════════════════════════════════════════════════════════════════════
+
+model Supplier {
+  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String         @db.Uuid
+  code           String
+  name           String
+  legalName      String?
+  country        String         @db.Char(2)
+  address        Json
+  contactEmail   String
+  contactPhone   String?
+  website        String?
+  taxId          String?
+  currency       String         @default("USD") @db.Char(3)
+  paymentTerms   Int            @default(30)
+  category       SupplierCategory
+  tier           SupplierTier   @default(STANDARD)
+  riskScore      Decimal?       @db.Decimal(5, 2)
+  qualityScore   Decimal?       @db.Decimal(5, 2)
+  deliveryScore  Decimal?       @db.Decimal(5, 2)
+  overallScore   Decimal?       @db.Decimal(5, 2)
+  isActive       Boolean        @default(true)
+  certifications String[]
+  metadata       Json           @default("{}")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization    Organization    @relation(fields: [organizationId], references: [id])
+  purchaseOrders  PurchaseOrder[]
+  contracts       Contract[]
+  evaluations     SupplierEvaluation[]
+  products        Product[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, riskScore])
+  @@map("suppliers")
+}
+
+enum SupplierCategory {
+  RAW_MATERIALS
+  EQUIPMENT
+  SPARE_PARTS
+  SERVICES
+  LOGISTICS
+  IT_SERVICES
+  UTILITIES
+  CONSUMABLES
+  OTHER
+}
+
+enum SupplierTier {
+  STRATEGIC
+  PREFERRED
+  STANDARD
+  RESTRICTED
+}
+
+model SupplierEvaluation {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  supplierId   String   @db.Uuid
+  period       String
+  quality      Decimal  @db.Decimal(5, 2)
+  delivery     Decimal  @db.Decimal(5, 2)
+  price        Decimal  @db.Decimal(5, 2)
+  responsiveness Decimal @db.Decimal(5, 2)
+  compliance   Decimal  @db.Decimal(5, 2)
+  overall      Decimal  @db.Decimal(5, 2)
+  notes        String?
+  evaluatedBy  String   @db.Uuid
+  createdAt    DateTime @default(now())
+
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+
+  @@map("supplier_evaluations")
+}
+
+model PurchaseOrder {
+  id               String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId   String          @db.Uuid
+  supplierId       String          @db.Uuid
+  poNumber         String
+  status           PoStatus        @default(DRAFT)
+  currency         String          @db.Char(3)
+  subtotal         Decimal         @db.Decimal(14, 2)
+  taxAmount        Decimal         @default(0) @db.Decimal(14, 2)
+  shippingCost     Decimal         @default(0) @db.Decimal(14, 2)
+  totalAmount      Decimal         @db.Decimal(14, 2)
+  requestedDate    DateTime
+  confirmedDate    DateTime?
+  deliveredDate    DateTime?
+  paymentDueDate   DateTime?
+  paidAt           DateTime?
+  shippingAddress  Json
+  billingAddress   Json
+  terms            String?
+  notes            String?
+  attachments      String[]
+  isAiGenerated    Boolean         @default(false)
+  approvedBy       String?         @db.Uuid
+  approvedAt       DateTime?
+  metadata         Json            @default("{}")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  supplier     Supplier           @relation(fields: [supplierId], references: [id])
+  items        PurchaseOrderItem[]
+  receipts     GoodsReceipt[]
+
+  @@unique([organizationId, poNumber])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  @@map("purchase_orders")
+}
+
+enum PoStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  INVOICED
+  PAID
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  purchaseOrderId String   @db.Uuid
+  productId       String?  @db.Uuid
+  description     String
+  sku             String?
+  quantity        Decimal  @db.Decimal(12, 3)
+  unit            String
+  unitPrice       Decimal  @db.Decimal(14, 4)
+  lineTotal       Decimal  @db.Decimal(14, 2)
+  receivedQty     Decimal  @default(0) @db.Decimal(12, 3)
+  notes           String?
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product?      @relation(fields: [productId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model GoodsReceipt {
+  id              String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  purchaseOrderId String        @db.Uuid
+  receiptNumber   String
+  receivedAt      DateTime
+  warehouseId     String        @db.Uuid
+  receivedBy      String        @db.Uuid
+  status          ReceiptStatus @default(PENDING_INSPECTION)
+  qualityPassed   Boolean?
+  notes           String?
+  createdAt       DateTime      @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("goods_receipts")
+}
+
+enum ReceiptStatus {
+  PENDING_INSPECTION
+  ACCEPTED
+  PARTIALLY_ACCEPTED
+  REJECTED
+}
+
+model Contract {
+  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String         @db.Uuid
+  supplierId     String         @db.Uuid
+  contractNumber String
+  title          String
+  type           ContractType
+  status         ContractStatus @default(DRAFT)
+  value          Decimal        @db.Decimal(16, 2)
+  currency       String         @db.Char(3)
+  startDate      DateTime
+  endDate        DateTime
+  autoRenewal    Boolean        @default(false)
+  noticePeriodDays Int          @default(30)
+  terms          String?        @db.Text
+  fileUrl        String?
+  tags           String[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  supplier     Supplier      @relation(fields: [supplierId], references: [id])
+
+  @@unique([organizationId, contractNumber])
+  @@map("contracts")
+}
+
+enum ContractType {
+  FRAMEWORK
+  SPOT
+  BLANKET
+  SERVICE
+  MAINTENANCE
+}
+
+enum ContractStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  TERMINATED
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// INVENTORY MODULE
+// ═══════════════════════════════════════════════════════════════════════
+
+model Product {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String      @db.Uuid
+  supplierId     String?     @db.Uuid
+  sku            String
+  name           String
+  description    String?
+  category       String
+  subCategory    String?
+  unit           String
+  weight         Decimal?    @db.Decimal(10, 3)
+  weightUnit     String?
+  dimensions     Json?
+  cost           Decimal     @db.Decimal(14, 4)
+  price          Decimal?    @db.Decimal(14, 4)
+  currency       String      @db.Char(3)
+  leadTimeDays   Int?
+  minOrderQty    Decimal?    @db.Decimal(12, 3)
+  reorderPoint   Decimal?    @db.Decimal(12, 3)
+  safetyStock    Decimal?    @db.Decimal(12, 3)
+  eoqQuantity    Decimal?    @db.Decimal(12, 3)
+  isActive       Boolean     @default(true)
+  imageUrl       String?
+  barcode        String?
+  hsCode         String?
+  tags           String[]
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  supplier       Supplier?           @relation(fields: [supplierId], references: [id])
+  inventoryItems InventoryItem[]
+  poItems        PurchaseOrderItem[]
+  movements      StockMovement[]
+
+  @@unique([organizationId, sku])
+  @@index([organizationId, category])
+  @@map("products")
+}
+
+model Warehouse {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String        @db.Uuid
+  code           String
+  name           String
+  type           WarehouseType
+  address        Json
+  country        String        @db.Char(2)
+  latitude       Decimal?      @db.Decimal(10, 7)
+  longitude      Decimal?      @db.Decimal(10, 7)
+  capacity       Decimal?      @db.Decimal(14, 2)
+  capacityUnit   String?
+  isActive       Boolean       @default(true)
+  managerId      String?       @db.Uuid
+  metadata       Json          @default("{}")
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  inventoryItems InventoryItem[]
+  movements      StockMovement[]
+  shipmentLegs   ShipmentLeg[]
+
+  @@unique([organizationId, code])
+  @@map("warehouses")
+}
+
+enum WarehouseType {
+  CENTRAL
+  REGIONAL
+  DISTRIBUTION
+  TRANSIT
+  MINE_SITE
+  PORT
+  COLD_STORAGE
+}
+
+model InventoryItem {
+  id              String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId  String   @db.Uuid
+  productId       String   @db.Uuid
+  warehouseId     String   @db.Uuid
+  quantityOnHand  Decimal  @db.Decimal(14, 3)
+  quantityReserved Decimal @default(0) @db.Decimal(14, 3)
+  quantityAvailable Decimal @db.Decimal(14, 3)
+  quantityInTransit Decimal @default(0) @db.Decimal(14, 3)
+  averageCost     Decimal  @db.Decimal(14, 4)
+  totalValue      Decimal  @db.Decimal(16, 2)
+  lotNumber       String?
+  expiryDate      DateTime?
+  location        String?
+  lastCountDate   DateTime?
+  lastMovementAt  DateTime?
+  updatedAt       DateTime @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  product      Product        @relation(fields: [productId], references: [id])
+  warehouse    Warehouse      @relation(fields: [warehouseId], references: [id])
+
+  @@unique([organizationId, productId, warehouseId])
+  @@index([organizationId, productId])
+  @@index([organizationId, warehouseId])
+  @@map("inventory_items")
+}
+
+model StockMovement {
+  id             String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String        @db.Uuid
+  productId      String        @db.Uuid
+  warehouseId    String        @db.Uuid
+  type           MovementType
+  quantity       Decimal       @db.Decimal(14, 3)
+  unitCost       Decimal       @db.Decimal(14, 4)
+  totalCost      Decimal       @db.Decimal(16, 2)
+  reference      String?
+  referenceType  String?
+  notes          String?
+  performedBy    String        @db.Uuid
+  createdAt      DateTime      @default(now())
+
+  product   Product   @relation(fields: [productId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+
+  @@index([organizationId, productId, createdAt])
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  RECEIPT
+  ISSUE
+  TRANSFER_IN
+  TRANSFER_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  RETURN
+  SCRAP
+  PRODUCTION_INPUT
+  PRODUCTION_OUTPUT
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// LOGISTICS MODULE
+// ═══════════════════════════════════════════════════════════════════════
+
+model Shipment {
+  id             String         @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String         @db.Uuid
+  shipmentNumber String
+  type           ShipmentType
+  status         ShipmentStatus @default(PLANNED)
+  priority       Priority       @default(NORMAL)
+  origin         Json
+  destination    Json
+  carrier        String?
+  trackingNumber String?
+  vehicleId      String?        @db.Uuid
+  scheduledAt    DateTime
+  estimatedArrival DateTime?
+  actualDeparture  DateTime?
+  actualArrival    DateTime?
+  distance        Decimal?      @db.Decimal(10, 2)
+  weight          Decimal?      @db.Decimal(10, 3)
+  volume          Decimal?      @db.Decimal(10, 3)
+  freightCost     Decimal?      @db.Decimal(14, 2)
+  currency        String        @db.Char(3)
+  currentLat      Decimal?      @db.Decimal(10, 7)
+  currentLng      Decimal?      @db.Decimal(10, 7)
+  lastLocationAt  DateTime?
+  co2Emissions    Decimal?      @db.Decimal(10, 3)
+  metadata        Json          @default("{}")
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id])
+  vehicle      Vehicle?       @relation(fields: [vehicleId], references: [id])
+  legs         ShipmentLeg[]
+  events       ShipmentEvent[]
+
+  @@unique([organizationId, shipmentNumber])
+  @@index([organizationId, status])
+  @@map("shipments")
+}
+
+enum ShipmentType {
+  INBOUND
+  OUTBOUND
+  INTERNAL_TRANSFER
+  MINE_TO_PORT
+  CROSS_DOCK
+}
+
+enum ShipmentStatus {
+  PLANNED
+  CONFIRMED
+  IN_TRANSIT
+  ARRIVED_AT_HUB
+  OUT_FOR_DELIVERY
+  DELIVERED
+  DELAYED
+  CANCELLED
+  LOST
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+model ShipmentLeg {
+  id               String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipmentId       String   @db.Uuid
+  sequence         Int
+  fromWarehouseId  String?  @db.Uuid
+  toWarehouseId    String?  @db.Uuid
+  fromAddress      Json?
+  toAddress        Json?
+  mode             TransportMode
+  carrier          String?
+  scheduledAt      DateTime
+  estimatedArrival DateTime?
+  actualDeparture  DateTime?
+  actualArrival    DateTime?
+  status           ShipmentStatus
+
+  shipment      Shipment   @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse? @relation(fields: [fromWarehouseId], references: [id])
+
+  @@map("shipment_legs")
+}
+
+enum TransportMode {
+  ROAD
+  RAIL
+  AIR
+  SEA
+  PIPELINE
+  MULTIMODAL
+}
+
+model ShipmentEvent {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  shipmentId String   @db.Uuid
+  type       String
+  status     ShipmentStatus
+  location   Json?
+  notes      String?
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@map("shipment_events")
+}
+
+model Vehicle {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String      @db.Uuid
+  plateNumber    String
+  type           VehicleType
+  make           String?
+  model          String?
+  year           Int?
+  capacity       Decimal?    @db.Decimal(10, 2)
+  capacityUnit   String?
+  fuelType       FuelType
+  status         VehicleStatus @default(AVAILABLE)
+  currentLat     Decimal?    @db.Decimal(10, 7)
+  currentLng     Decimal?    @db.Decimal(10, 7)
+  mileage        Int?
+  nextMaintenanceAt DateTime?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  shipments    Shipment[]
+
+  @@unique([organizationId, plateNumber])
+  @@map("vehicles")
+}
+
+enum VehicleType {
+  TRUCK
+  VAN
+  PICKUP
+  TRAIN
+  VESSEL
+  AIRCRAFT
+  DUMP_TRUCK
+  HAUL_TRUCK
+}
+
+enum FuelType {
+  DIESEL
+  PETROL
+  ELECTRIC
+  HYBRID
+  LNG
+  HFO
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  OUT_OF_SERVICE
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// PRODUCTION PLANNING MODULE
+// ═══════════════════════════════════════════════════════════════════════
+
+model ProductionPlan {
+  id             String               @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String               @db.Uuid
+  title          String
+  status         ProductionPlanStatus @default(DRAFT)
+  startDate      DateTime
+  endDate        DateTime
+  targetOutput   Decimal              @db.Decimal(14, 3)
+  actualOutput   Decimal?             @db.Decimal(14, 3)
+  unit           String
+  facilityId     String?
+  notes          String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id])
+  tasks        ProductionTask[]
+
+  @@map("production_plans")
+}
+
+enum ProductionPlanStatus {
+  DRAFT
+  APPROVED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model ProductionTask {
+  id               String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  productionPlanId String     @db.Uuid
+  title            String
+  type             String
+  startDate        DateTime
+  endDate          DateTime
+  progress         Int        @default(0)
+  assignedTo       String?    @db.Uuid
+  dependencies     String[]
+  status           TaskStatus @default(PENDING)
+  notes            String?
+
+  plan ProductionPlan @relation(fields: [productionPlanId], references: [id], onDelete: Cascade)
+
+  @@map("production_tasks")
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+  CANCELLED
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// MINING MODULE (SPECIALIZATION)
+// ═══════════════════════════════════════════════════════════════════════
+
+model MiningSite {
+  id             String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String     @db.Uuid
+  code           String
+  name           String
+  type           MineType
+  status         SiteStatus @default(ACTIVE)
+  country        String     @db.Char(2)
+  region         String
+  latitude       Decimal    @db.Decimal(10, 7)
+  longitude      Decimal    @db.Decimal(10, 7)
+  elevation      Decimal?   @db.Decimal(8, 2)
+  area           Decimal?   @db.Decimal(12, 2)
+  areaUnit       String?
+  primaryOre     String
+  estimatedReserves Decimal? @db.Decimal(16, 2)
+  reservesUnit   String?
+  operationalSince DateTime?
+  licenseNumber  String?
+  licenseExpiry  DateTime?
+  certifications String[]
+  metadata       Json       @default("{}")
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  extractionLogs ExtractionLog[]
+  equipment      MiningEquipment[]
+  safetyIncidents SafetyIncident[]
+  environmentalMetrics EnvironmentalMetric[]
+  iotReadings    IoTReading[]
+
+  @@unique([organizationId, code])
+  @@map("mining_sites")
+}
+
+enum MineType {
+  OPEN_PIT
+  UNDERGROUND
+  ALLUVIAL
+  PLACER
+  QUARRY
+}
+
+enum SiteStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  REHABILITATION
+  CLOSED
+}
+
+model ExtractionLog {
+  id           String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  siteId       String    @db.Uuid
+  shift        ShiftType
+  date         DateTime  @db.Date
+  oreExtracted Decimal   @db.Decimal(14, 3)
+  wasteRemoved Decimal   @db.Decimal(14, 3)
+  grade        Decimal   @db.Decimal(8, 4)
+  recovery     Decimal   @db.Decimal(5, 2)
+  yield        Decimal?  @db.Decimal(14, 3)
+  crushingRate Decimal?  @db.Decimal(10, 2)
+  blastingEvents Int     @default(0)
+  unit         String    @default("tonnes")
+  operatorId   String?   @db.Uuid
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  site MiningSite @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, date])
+  @@map("extraction_logs")
+}
+
+enum ShiftType {
+  DAY
+  AFTERNOON
+  NIGHT
+}
+
+model MiningEquipment {
+  id                  String            @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  siteId              String            @db.Uuid
+  assetCode           String
+  name                String
+  type                EquipmentType
+  make                String?
+  model               String?
+  serialNumber        String?
+  yearManufactured    Int?
+  status              EquipmentStatus   @default(OPERATIONAL)
+  operatingHours      Decimal           @default(0) @db.Decimal(10, 1)
+  lastMaintenanceAt   DateTime?
+  nextMaintenanceAt   DateTime?
+  maintenanceCycleDays Int?
+  predictedFailureAt  DateTime?
+  failureProbability  Decimal?          @db.Decimal(5, 4)
+  utilizationRate     Decimal?          @db.Decimal(5, 2)
+  availability        Decimal?          @db.Decimal(5, 2)
+  fuelConsumptionRate Decimal?          @db.Decimal(8, 3)
+  metadata            Json              @default("{}")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  site              MiningSite          @relation(fields: [siteId], references: [id])
+  maintenanceLogs   MaintenanceLog[]
+  iotReadings       IoTReading[]
+
+  @@unique([siteId, assetCode])
+  @@map("mining_equipment")
+}
+
+enum EquipmentType {
+  EXCAVATOR
+  HAUL_TRUCK
+  DRILL_RIG
+  CRUSHER
+  CONVEYOR
+  LOADER
+  GRADER
+  DOZER
+  PUMP
+  GENERATOR
+  PROCESSING_PLANT
+}
+
+enum EquipmentStatus {
+  OPERATIONAL
+  STANDBY
+  UNDER_MAINTENANCE
+  BREAKDOWN
+  DECOMMISSIONED
+}
+
+model MaintenanceLog {
+  id          String          @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  equipmentId String          @db.Uuid
+  type        MaintenanceType
+  description String
+  startedAt   DateTime
+  completedAt DateTime?
+  downtimeHours Decimal?      @db.Decimal(8, 2)
+  cost        Decimal?        @db.Decimal(12, 2)
+  currency    String?         @db.Char(3)
+  partsReplaced String[]
+  technicianId String?        @db.Uuid
+  outcome     String?
+  createdAt   DateTime        @default(now())
+
+  equipment MiningEquipment @relation(fields: [equipmentId], references: [id])
+
+  @@map("maintenance_logs")
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  PREDICTIVE
+  EMERGENCY
+  OVERHAUL
+}
+
+model IoTReading {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  siteId      String   @db.Uuid
+  equipmentId String?  @db.Uuid
+  sensorId    String
+  sensorType  String
+  value       Decimal  @db.Decimal(14, 4)
+  unit        String
+  timestamp   DateTime
+  isAnomaly   Boolean  @default(false)
+  anomalyScore Decimal? @db.Decimal(5, 4)
+  createdAt   DateTime @default(now())
+
+  site      MiningSite       @relation(fields: [siteId], references: [id])
+  equipment MiningEquipment? @relation(fields: [equipmentId], references: [id])
+
+  @@index([siteId, sensorType, timestamp])
+  @@index([equipmentId, timestamp])
+  @@map("iot_readings")
+}
+
+model SafetyIncident {
+  id          String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  siteId      String           @db.Uuid
+  type        IncidentType
+  severity    Severity
+  status      IncidentStatus   @default(OPEN)
+  title       String
+  description String           @db.Text
+  location    String?
+  occurredAt  DateTime
+  reportedBy  String           @db.Uuid
+  injuredCount Int             @default(0)
+  fatalCount  Int              @default(0)
+  propertyDamage Decimal?      @db.Decimal(12, 2)
+  rootCause   String?
+  corrective  String?
+  closedAt    DateTime?
+  attachments String[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  site MiningSite @relation(fields: [siteId], references: [id])
+
+  @@map("safety_incidents")
+}
+
+enum IncidentType {
+  NEAR_MISS
+  INJURY
+  PROPERTY_DAMAGE
+  ENVIRONMENTAL
+  SECURITY
+  FATALITY
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  UNDER_INVESTIGATION
+  ACTION_REQUIRED
+  CLOSED
+}
+
+model EnvironmentalMetric {
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  siteId      String   @db.Uuid
+  date        DateTime @db.Date
+  metricType  String
+  value       Decimal  @db.Decimal(14, 4)
+  unit        String
+  threshold   Decimal? @db.Decimal(14, 4)
+  isCompliant Boolean  @default(true)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  site MiningSite @relation(fields: [siteId], references: [id])
+
+  @@index([siteId, metricType, date])
+  @@map("environmental_metrics")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AI & ANALYTICS
+// ═══════════════════════════════════════════════════════════════════════
+
+model KpiSnapshot {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String   @db.Uuid
+  period         String
+  periodType     String
+  metrics        Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, periodType, period])
+  @@map("kpi_snapshots")
+}
+
+model KpiAlert {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String      @db.Uuid
+  userId         String      @db.Uuid
+  metricName     String
+  condition      String
+  threshold      Decimal     @db.Decimal(14, 4)
+  currentValue   Decimal?    @db.Decimal(14, 4)
+  isActive       Boolean     @default(true)
+  lastTriggeredAt DateTime?
+  notifyEmail    Boolean     @default(true)
+  notifyInApp    Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("kpi_alerts")
+}
+
+model AiInsight {
+  id             String      @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String      @db.Uuid
+  type           InsightType
+  title          String
+  description    String      @db.Text
+  confidence     Decimal     @db.Decimal(5, 4)
+  impact         String
+  impactLevel    Severity
+  recommendation String?     @db.Text
+  data           Json
+  isRead         Boolean     @default(false)
+  isActioned     Boolean     @default(false)
+  expiresAt      DateTime?
+  createdAt      DateTime    @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, type, createdAt])
+  @@map("ai_insights")
+}
+
+enum InsightType {
+  DEMAND_FORECAST
+  STOCKOUT_RISK
+  OVERSTOCK_RISK
+  SUPPLIER_RISK
+  ROUTE_OPTIMIZATION
+  EQUIPMENT_FAILURE
+  COST_ANOMALY
+  DELAY_PREDICTION
+  ESG_RISK
+}
+
+model AuditLog {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  organizationId String   @db.Uuid
+  userId         String?  @db.Uuid
+  action         String
+  resource       String
+  resourceId     String?
+  changes        Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, resource, createdAt])
+  @@map("audit_logs")
+}
