@@ -1,15 +1,14 @@
-<<<<<<< HEAD
-# ChainFlow Platform
+# minechain-ai
 
-**AI-powered Supply Chain SaaS — Enterprise Grade**
+**IA-powered Supply Chain SaaS for Africa — Enterprise Grade**
 
-> Combining the power of SAP, the intelligence of Palantir, and the usability of modern SaaS tools.
+> Combining the power of SAP, the intelligence of Palantir, and the usability of modern SaaS tools — built for African markets.
 
 ---
 
 ## Architecture Overview
 
-ChainFlow is a microservices-based, multi-tenant SaaS platform built on:
+minechain-ai is a microservices-based, multi-tenant SaaS platform built on:
 
 - **Frontend**: React + TypeScript + TailwindCSS (Vite) with full EN/FR i18n
 - **Backend**: NestJS microservices (Node.js 20) — one service per domain
@@ -24,7 +23,7 @@ ChainFlow is a microservices-based, multi-tenant SaaS platform built on:
 ## Repository Structure
 
 ```
-chainflow-platform/
+minechain-ai/
 ├── apps/
 │   ├── web/                    # React dashboard (main SaaS app)
 │   └── landing/                # Marketing landing page
@@ -84,8 +83,8 @@ chainflow-platform/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/chainflow-platform.git
-cd chainflow-platform
+git clone https://github.com/JoeObscura/minechain-ai.git
+cd minechain-ai
 pnpm install
 ```
 
@@ -124,37 +123,6 @@ pnpm dev
 
 ---
 
-## Push to Your GitHub Repository
-
-### Option A — Automated (recommended)
-
-```bash
-chmod +x setup-github.sh
-./setup-github.sh YOUR_GITHUB_USERNAME chainflow-platform
-```
-
-The script will:
-1. Create `.gitignore` and `.env.example`
-2. Initialize git and make the initial commit
-3. Create the GitHub repository (via `gh` CLI if available)
-4. Push all code
-5. List required GitHub Secrets for CI/CD
-
-### Option B — Manual
-
-```bash
-git init
-git add -A
-git commit -m "feat: initial ChainFlow platform architecture"
-git branch -M main
-
-# Create repo at https://github.com/new, then:
-git remote add origin https://github.com/YOUR_USERNAME/chainflow-platform.git
-git push -u origin main
-```
-
----
-
 ## GitHub Secrets Required for CI/CD
 
 Set these in **GitHub → Settings → Secrets and variables → Actions**:
@@ -174,28 +142,24 @@ Set these in **GitHub → Settings → Secrets and variables → Actions**:
 ## Infrastructure Deployment (AWS)
 
 ```bash
-# 1. Create Terraform state backend first (one-time)
-aws s3 mb s3://chainflow-terraform-state --region us-east-1
+# 1. Create Terraform state backend (one-time)
+aws s3 mb s3://minechain-terraform-state --region us-east-1
 aws dynamodb create-table \
-  --table-name chainflow-terraform-locks \
+  --table-name minechain-terraform-locks \
   --attribute-definitions AttributeName=LockID,AttributeType=S \
   --key-schema AttributeName=LockID,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST
 
 # 2. Deploy staging
 cd infra/terraform/environments/staging
-terraform init
-terraform plan
-terraform apply
+terraform init && terraform plan && terraform apply
 
 # 3. Deploy production
 cd infra/terraform/environments/production
-terraform init
-terraform plan
-terraform apply
+terraform init && terraform plan && terraform apply
 
 # 4. Configure kubectl
-aws eks update-kubeconfig --name chainflow-production --region us-east-1
+aws eks update-kubeconfig --name minechain-production --region us-east-1
 
 # 5. Deploy Kubernetes workloads
 kubectl apply -k infra/k8s/overlays/production
@@ -203,41 +167,23 @@ kubectl apply -k infra/k8s/overlays/production
 
 ---
 
-## Key Technical Decisions
-
-**Multi-tenancy**: Row-level tenant isolation via `organizationId` on every table + PostgreSQL Row Level Security policies. Strict tenant context enforcement in all NestJS services via middleware.
-
-**Event-driven**: All cross-service communication uses Kafka. Services publish domain events (e.g., `purchase-order.approved`) and subscribe independently — no direct service-to-service HTTP calls.
-
-**AI integration**: The AI Engine (FastAPI) exposes REST endpoints consumed by NestJS services. Models are versioned and registered in AWS SageMaker Model Registry. Continuous retraining via scheduled Kafka consumers.
-
-**i18n**: `react-i18next` on frontend, custom i18n middleware on NestJS backend (error messages, notifications). Locale stored per-user, currency/date formatting per-organization.
-
-**Security**: JWT (15min expiry) + refresh tokens. All secrets via AWS Secrets Manager. Tenant data isolation enforced at application level AND database level (RLS). Audit logs on every write operation.
-
----
-
 ## Module Roadmap
 
 | Module | Status |
 |--------|--------|
-| Auth + Multi-tenant core | Architecture complete |
-| Procurement (PO, Suppliers, Contracts) | Architecture complete |
-| Inventory (Stock, Warehouse, Movements) | Architecture complete |
-| Logistics (Shipments, Fleet, Routes) | Architecture complete |
-| Production Planning (Gantt, Capacity) | Architecture complete |
-| Mining Specialization (Ore, Equipment, IoT) | Architecture complete |
-| AI Engine (Forecasting, Risk, Anomaly) | Architecture complete |
-| SaaS Core (Billing, Auth, RBAC) | Architecture complete |
-| Frontend Dashboard | Next phase |
-| i18n EN + FR | Complete |
+| Auth + Multi-tenant core | ✅ Architecture complete |
+| Procurement (PO, Suppliers, Contracts) | ✅ Architecture complete |
+| Inventory (Stock, Warehouse, Movements) | ✅ Architecture complete |
+| Logistics (Shipments, Fleet, Routes) | ✅ Architecture complete |
+| Production Planning (Gantt, Capacity) | ✅ Architecture complete |
+| Mining Specialization (Ore, Equipment, IoT) | ✅ Architecture complete |
+| AI Engine (Forecasting, Risk, Anomaly) | ✅ Architecture complete |
+| SaaS Core (Billing, Auth, RBAC) | ✅ Architecture complete |
+| Frontend Dashboard | 🔄 In progress |
+| i18n EN + FR | ✅ Complete |
 
 ---
 
 ## License
 
-Proprietary — ChainFlow Platform. All rights reserved.
-=======
-# minechain - ai
-IA - powered Supply Chain Saas for Africa 
->>>>>>> 76e06302e17fdaf503eb12457963e5f34d69ae20
+Proprietary — minechain-ai. All rights reserved.
