@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ChainFlow Platform
 
 **AI-powered Supply Chain SaaS — Enterprise Grade**
@@ -236,3 +237,7 @@ kubectl apply -k infra/k8s/overlays/production
 ## License
 
 Proprietary — ChainFlow Platform. All rights reserved.
+=======
+# minechain - ai
+IA - powered Supply Chain Saas for Africa 
+>>>>>>> 76e06302e17fdaf503eb12457963e5f34d69ae20
