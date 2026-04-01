@@ -1,0 +1,24 @@
+# minechain-ai Code Owners
+# These owners will be requested for review on PRs
+
+# Global owner
+* @JoeObscura
+
+# Services
+/services/saas-core/     @JoeObscura
+/services/ai-engine/     @JoeObscura
+/services/mining/        @JoeObscura
+/services/procurement/   @JoeObscura
+/services/inventory/     @JoeObscura
+/services/logistics/     @JoeObscura
+
+# Frontend
+/apps/web/               @JoeObscura
+/apps/landing/           @JoeObscura
+
+# Infrastructure (extra review required)
+/infra/                  @JoeObscura
+/.github/                @JoeObscura
+
+# Packages
+/packages/               @JoeObscura

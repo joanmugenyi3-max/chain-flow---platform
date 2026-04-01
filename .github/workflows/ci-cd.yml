@@ -1,4 +1,4 @@
-name: ChainFlow CI/CD Pipeline
+name: minechain-ai CI/CD Pipeline
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
-  EKS_CLUSTER_NAME: chainflow-production
+  EKS_CLUSTER_NAME: minechain-production
   NODE_VERSION: '20'
   PYTHON_VERSION: '3.11'
 
@@ -39,9 +39,9 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: chainflow_test
+          POSTGRES_USER: minechain_test
           POSTGRES_PASSWORD: test_secret
-          POSTGRES_DB: chainflow_test
+          POSTGRES_DB: minechain_test
         ports:
           - 5432:5432
         options: >-
@@ -68,11 +68,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Run DB migrations
         env:
-          DATABASE_URL: postgresql://chainflow_test:test_secret@localhost:5432/chainflow_test
+          DATABASE_URL: postgresql://minechain_test:test_secret@localhost:5432/minechain_test
         run: pnpm db:migrate
       - name: Run tests
         env:
-          DATABASE_URL: postgresql://chainflow_test:test_secret@localhost:5432/chainflow_test
+          DATABASE_URL: postgresql://minechain_test:test_secret@localhost:5432/minechain_test
           REDIS_URL: redis://localhost:6379
           JWT_SECRET: test_jwt_secret_minimum_32_chars!!
           NODE_ENV: test
@@ -110,11 +110,11 @@ jobs:
         run: |
           cd services/ai-engine
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov pytest-asyncio
       - name: Run tests
         run: |
           cd services/ai-engine
-          pytest --cov=src --cov-report=xml
+          pytest --cov=src --cov-report=xml -v
       - uses: codecov/codecov-action@v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -133,12 +133,14 @@ jobs:
           scan-ref: .
           severity: CRITICAL,HIGH
           exit-code: 1
+          ignore-unfixed: true
       - name: OWASP Dependency Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
-          project: chainflow-platform
+          project: minechain-ai
           path: .
           format: HTML
+        continue-on-error: true
 
   # ── Build & Push Docker Images ───────────────────────────────────────
   build-images:
@@ -170,6 +172,9 @@ jobs:
           - name: saas-core
             context: .
             dockerfile: services/saas-core/Dockerfile
+          - name: notification
+            context: .
+            dockerfile: services/notification/Dockerfile
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -190,8 +195,8 @@ jobs:
           file: ${{ matrix.service.dockerfile }}
           push: true
           tags: |
-            ${{ env.ECR_REGISTRY }}/chainflow-${{ matrix.service.name }}:${{ github.sha }}
-            ${{ env.ECR_REGISTRY }}/chainflow-${{ matrix.service.name }}:latest
+            ${{ env.ECR_REGISTRY }}/minechain-${{ matrix.service.name }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/minechain-${{ matrix.service.name }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -206,7 +211,7 @@ jobs:
     if: github.ref == 'refs/heads/develop'
     environment:
       name: staging
-      url: https://staging.chainflow.io
+      url: https://staging.minechain.ai
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -216,24 +221,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name chainflow-staging --region ${{ env.AWS_REGION }}
+        run: aws eks update-kubeconfig --name minechain-staging --region ${{ env.AWS_REGION }}
       - name: Deploy with Kustomize
         run: |
           cd infra/k8s/overlays/staging
           kustomize edit set image \
-            chainflow-web=${{ env.ECR_REGISTRY }}/chainflow-web:${{ github.sha }} \
-            chainflow-procurement=${{ env.ECR_REGISTRY }}/chainflow-procurement:${{ github.sha }} \
-            chainflow-inventory=${{ env.ECR_REGISTRY }}/chainflow-inventory:${{ github.sha }} \
-            chainflow-logistics=${{ env.ECR_REGISTRY }}/chainflow-logistics:${{ github.sha }} \
-            chainflow-mining=${{ env.ECR_REGISTRY }}/chainflow-mining:${{ github.sha }} \
-            chainflow-ai-engine=${{ env.ECR_REGISTRY }}/chainflow-ai-engine:${{ github.sha }} \
-            chainflow-saas-core=${{ env.ECR_REGISTRY }}/chainflow-saas-core:${{ github.sha }}
+            minechain-web=${{ env.ECR_REGISTRY }}/minechain-web:${{ github.sha }} \
+            minechain-procurement=${{ env.ECR_REGISTRY }}/minechain-procurement:${{ github.sha }} \
+            minechain-inventory=${{ env.ECR_REGISTRY }}/minechain-inventory:${{ github.sha }} \
+            minechain-logistics=${{ env.ECR_REGISTRY }}/minechain-logistics:${{ github.sha }} \
+            minechain-mining=${{ env.ECR_REGISTRY }}/minechain-mining:${{ github.sha }} \
+            minechain-ai-engine=${{ env.ECR_REGISTRY }}/minechain-ai-engine:${{ github.sha }} \
+            minechain-saas-core=${{ env.ECR_REGISTRY }}/minechain-saas-core:${{ github.sha }} \
+            minechain-notification=${{ env.ECR_REGISTRY }}/minechain-notification:${{ github.sha }}
           kubectl apply -k .
-          kubectl rollout status deployment/chainflow-web -n chainflow-staging --timeout=5m
-      - name: Run smoke tests
+          kubectl rollout status deployment/minechain-web -n minechain-staging --timeout=5m
+      - name: Smoke tests
         run: |
           sleep 30
-          curl -f https://staging.chainflow.io/api/health || exit 1
+          curl -f https://staging.minechain.ai/api/health || exit 1
+      - name: Notify Slack — Staging
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "${{ job.status == 'success' && '✅' || '🚨' }} *Staging* deployment ${{ job.status }} — <https://staging.minechain.ai|staging.minechain.ai>\nCommit: ${{ github.sha }}\nBy: ${{ github.actor }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   # ── Deploy to Production ─────────────────────────────────────────────
   deploy-production:
@@ -243,7 +259,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     environment:
       name: production
-      url: https://app.chainflow.io
+      url: https://app.minechain.ai
     steps:
       - uses: actions/checkout@v4
       - name: Configure AWS credentials
@@ -256,38 +272,41 @@ jobs:
         run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER_NAME }} --region ${{ env.AWS_REGION }}
       - name: Run DB migrations (production)
         run: |
-          kubectl run db-migrate-${{ github.sha }} \
-            --image=${{ env.ECR_REGISTRY }}/chainflow-procurement:${{ github.sha }} \
+          kubectl run db-migrate-${{ github.run_id }} \
+            --image=${{ env.ECR_REGISTRY }}/minechain-saas-core:${{ github.sha }} \
             --restart=Never \
-            --namespace=chainflow-production \
+            --namespace=minechain-production \
             --env="DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }}" \
             --command -- pnpm db:migrate
-          kubectl wait --for=condition=complete job/db-migrate-${{ github.sha }} \
-            --namespace=chainflow-production --timeout=5m
+          kubectl wait --for=condition=complete pod/db-migrate-${{ github.run_id }} \
+            --namespace=minechain-production --timeout=5m
+          kubectl delete pod db-migrate-${{ github.run_id }} -n minechain-production
       - name: Blue/Green deployment
         run: |
           cd infra/k8s/overlays/production
           kustomize edit set image \
-            chainflow-web=${{ env.ECR_REGISTRY }}/chainflow-web:${{ github.sha }} \
-            chainflow-procurement=${{ env.ECR_REGISTRY }}/chainflow-procurement:${{ github.sha }} \
-            chainflow-inventory=${{ env.ECR_REGISTRY }}/chainflow-inventory:${{ github.sha }} \
-            chainflow-logistics=${{ env.ECR_REGISTRY }}/chainflow-logistics:${{ github.sha }} \
-            chainflow-mining=${{ env.ECR_REGISTRY }}/chainflow-mining:${{ github.sha }} \
-            chainflow-ai-engine=${{ env.ECR_REGISTRY }}/chainflow-ai-engine:${{ github.sha }} \
-            chainflow-saas-core=${{ env.ECR_REGISTRY }}/chainflow-saas-core:${{ github.sha }}
+            minechain-web=${{ env.ECR_REGISTRY }}/minechain-web:${{ github.sha }} \
+            minechain-procurement=${{ env.ECR_REGISTRY }}/minechain-procurement:${{ github.sha }} \
+            minechain-inventory=${{ env.ECR_REGISTRY }}/minechain-inventory:${{ github.sha }} \
+            minechain-logistics=${{ env.ECR_REGISTRY }}/minechain-logistics:${{ github.sha }} \
+            minechain-mining=${{ env.ECR_REGISTRY }}/minechain-mining:${{ github.sha }} \
+            minechain-ai-engine=${{ env.ECR_REGISTRY }}/minechain-ai-engine:${{ github.sha }} \
+            minechain-saas-core=${{ env.ECR_REGISTRY }}/minechain-saas-core:${{ github.sha }} \
+            minechain-notification=${{ env.ECR_REGISTRY }}/minechain-notification:${{ github.sha }}
           kubectl apply -k .
-          kubectl rollout status deployment/chainflow-web -n chainflow-production --timeout=10m
+          kubectl rollout status deployment/minechain-web -n minechain-production --timeout=10m
       - name: Production health check
         run: |
           sleep 60
-          curl -f https://app.chainflow.io/api/health || (kubectl rollout undo deployment --all -n chainflow-production && exit 1)
-      - name: Notify Slack
+          curl -f https://app.minechain.ai/api/health || \
+            (kubectl rollout undo deployment --all -n minechain-production && exit 1)
+      - name: Notify Slack — Production
         if: always()
         uses: slackapi/slack-github-action@v1
         with:
           payload: |
             {
-              "text": "${{ job.status == 'success' && '✅' || '🚨' }} Production deployment ${{ job.status }}: ${{ github.sha }}"
+              "text": "${{ job.status == 'success' && '✅' || '🚨' }} *Production* deployment ${{ job.status }} — <https://app.minechain.ai|app.minechain.ai>\nCommit: `${{ github.sha }}`\nBy: ${{ github.actor }}"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

@@ -1,0 +1,45 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+  workflow_dispatch:
+
+jobs:
+  update-deps:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Update pnpm dependencies
+        run: pnpm update --recursive --latest
+      - name: Update Python dependencies
+        run: |
+          cd services/ai-engine
+          pip install pip-tools
+          pip-compile --upgrade requirements.in -o requirements.txt || true
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update dependencies'
+          title: 'chore: weekly dependency updates'
+          body: |
+            ## Automated Dependency Updates
+
+            This PR was automatically created by the weekly dependency update workflow.
+
+            ### Changes
+            - Updated pnpm dependencies to latest compatible versions
+            - Updated Python dependencies
+
+            Please review and merge if all tests pass.
+          branch: chore/dependency-updates
+          delete-branch: true
+          labels: dependencies, automated

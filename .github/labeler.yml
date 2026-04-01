@@ -1,0 +1,65 @@
+# Auto-labeling rules for PRs
+
+frontend:
+  - apps/web/**
+  - apps/landing/**
+  - packages/ui/**
+
+backend:
+  - services/saas-core/**
+  - services/procurement/**
+  - services/inventory/**
+  - services/logistics/**
+  - services/production/**
+  - services/notification/**
+
+mining:
+  - services/mining/**
+
+ai-engine:
+  - services/ai-engine/**
+
+infrastructure:
+  - infra/**
+  - docker-compose.yml
+  - .github/**
+
+database:
+  - packages/database/**
+
+packages:
+  - packages/**
+
+documentation:
+  - docs/**
+  - "**/*.md"
+
+dependencies:
+  - "**/package.json"
+  - "**/requirements.txt"
+  - pnpm-lock.yaml
+
+size/XS:
+  - changed-files:
+    - any-glob-to-any-file: "**"
+    count: 0-9
+
+size/S:
+  - changed-files:
+    - any-glob-to-any-file: "**"
+    count: 10-29
+
+size/M:
+  - changed-files:
+    - any-glob-to-any-file: "**"
+    count: 30-99
+
+size/L:
+  - changed-files:
+    - any-glob-to-any-file: "**"
+    count: 100-499
+
+size/XL:
+  - changed-files:
+    - any-glob-to-any-file: "**"
+    count: 500+
