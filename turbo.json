@@ -9,7 +9,7 @@
     "AWS_REGION",
     "KAFKA_BROKERS"
   ],
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**"]

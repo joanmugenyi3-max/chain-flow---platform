@@ -1,0 +1,82 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "description": "React 18 Dashboard — TailwindCSS + Vite (port 3000)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/web", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "landing",
+      "description": "Marketing Landing Page — React + Vite (port 3001)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/landing", "run", "dev"],
+      "port": 3001
+    },
+    {
+      "name": "saas-core",
+      "description": "Auth / Multi-tenant / Billing — NestJS (port 4007)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/saas-core", "run", "start:dev"],
+      "port": 4007
+    },
+    {
+      "name": "procurement",
+      "description": "PO / Suppliers / Contracts — NestJS (port 4001)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/procurement-service", "run", "start:dev"],
+      "port": 4001
+    },
+    {
+      "name": "inventory",
+      "description": "Stock / Warehouses / Movements — NestJS (port 4002)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/inventory-service", "run", "start:dev"],
+      "port": 4002
+    },
+    {
+      "name": "logistics",
+      "description": "Shipments / Fleet / Routes — NestJS (port 4003)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/logistics-service", "run", "start:dev"],
+      "port": 4003
+    },
+    {
+      "name": "mining",
+      "description": "IoT / ESG / Extraction / Safety — NestJS (port 4005)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/mining-service", "run", "start:dev"],
+      "port": 4005
+    },
+    {
+      "name": "notification",
+      "description": "Email / In-app / Webhooks / Socket.IO — NestJS (port 4006)",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@chainflow/notification-service", "run", "start:dev"],
+      "port": 4006
+    },
+    {
+      "name": "ai-engine",
+      "description": "FastAPI — Forecasting / Risk / Anomaly / Route Optimizer (port 8000)",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["src.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "docker-stack",
+      "description": "Infrastructure locale — PostgreSQL:5432, Redis:6379, Kafka:9092, Kafka UI:8090, Adminer:8080",
+      "runtimeExecutable": "docker-compose",
+      "runtimeArgs": ["up", "--remove-orphans"],
+      "port": 5432
+    },
+    {
+      "name": "all-services",
+      "description": "Turborepo — Lance TOUS les services en parallèle",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000
+    }
+  ]
+}
