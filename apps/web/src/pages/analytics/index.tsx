@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import PageLayout from '../../components/layout/PageLayout';
 import PageHeader from '../../components/ui/PageHeader';
 import StatCard from '../../components/ui/StatCard';
 import DataTable, { Column } from '../../components/ui/DataTable';
+import { useTranslation } from '@/i18n/useTranslation';
 import { colors, radius, font } from '../../lib/styles';
 
 // ── Mock data ─────────────────────────────────────────────────────────────────
@@ -20,60 +21,78 @@ const KPIS: KpiRow[] = [
   { module: 'Mining',      metric: 'LTIFR (rolling 12mo)',    value: '0.42',      vs: '-0.08 vs last year',  trend: 'up' },
 ];
 
-// Sparkline bar visual
+// Sparkline bar visual — deferred to client to avoid SSR/client hydration mismatch
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const bars = Array.from({ length: 8 }, (_, i) =>
-    Math.round(max * (0.6 + Math.random() * 0.4))
-  );
-  bars[bars.length - 1] = value;
-  const barMax = Math.max(...bars);
+  const [bars, setBars] = useState<number[]>(Array(8).fill(value));
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const generated = Array.from({ length: 8 }, (_, i) =>
+      i === 7 ? value : Math.round(max * (0.6 + Math.random() * 0.4))
+    );
+    setBars(generated);
+    setMounted(true);
+  }, [value, max]);
+
+  const barMax = Math.max(...bars, 1);
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 28 }}>
       {bars.map((b, i) => (
-        <div key={i} style={{ width: 6, height: `${(b / barMax) * 100}%`, background: i === bars.length - 1 ? color : color + '40', borderRadius: 2 }} />
+        <div
+          key={i}
+          style={{
+            width: 6,
+            height: `${(b / barMax) * 100}%`,
+            background: i === bars.length - 1 ? color : color + '40',
+            borderRadius: 2,
+            transition: mounted ? 'height 0.3s ease' : 'none',
+          }}
+        />
       ))}
     </div>
   );
 }
 
-const kpiCols: Column<KpiRow>[] = [
-  { key: 'module', label: 'Module', width: 120, render: (v) => (
-    <span style={{ fontSize: 12, fontWeight: 600, color: colors.primary, background: colors.primaryLight, padding: '2px 8px', borderRadius: 999, fontFamily: font.sans }}>{String(v)}</span>
-  )},
-  { key: 'metric', label: 'KPI' },
-  { key: 'value',  label: 'Current Value', align: 'right', render: (v) => <span style={{ fontWeight: 700, fontSize: 15, color: colors.slate900 }}>{String(v)}</span> },
-  { key: 'vs',     label: 'vs Previous', render: (v, r) => (
-    <span style={{ fontSize: 12, fontWeight: 600, color: r.trend === 'up' ? colors.success : colors.danger }}>{r.trend === 'up' ? '↑ ' : '↓ '}{String(v)}</span>
-  )},
-  { key: 'trend',  label: 'Trend', render: (_, r) => (
-    <MiniBar value={80} max={100} color={r.trend === 'up' ? colors.success : colors.danger} />
-  )},
-];
-
 export default function AnalyticsPage() {
+  const { t } = useTranslation();
+
+  const kpiCols = useMemo<Column<KpiRow>[]>(() => [
+    { key: 'module', label: t('analyticsPage.colModule'), width: 120, render: (v) => (
+      <span style={{ fontSize: 12, fontWeight: 600, color: colors.primary, background: colors.primaryLight, padding: '2px 8px', borderRadius: 999, fontFamily: font.sans }}>{String(v)}</span>
+    )},
+    { key: 'metric', label: t('analyticsPage.colKpi') },
+    { key: 'value',  label: t('analyticsPage.colCurrentValue'), align: 'right', render: (v) => <span style={{ fontWeight: 700, fontSize: 15, color: colors.slate900 }}>{String(v)}</span> },
+    { key: 'vs',     label: t('analyticsPage.colVsPrevious'), render: (v, r) => (
+      <span style={{ fontSize: 12, fontWeight: 600, color: r.trend === 'up' ? colors.success : colors.danger }}>{r.trend === 'up' ? '↑ ' : '↓ '}{String(v)}</span>
+    )},
+    { key: 'trend',  label: t('analyticsPage.colTrend'), render: (_, r) => (
+      <MiniBar value={80} max={100} color={r.trend === 'up' ? colors.success : colors.danger} />
+    )},
+  ], [t]);
+
   return (
     <PageLayout>
       <PageHeader
-        title="Analytics"
-        description="Real-time KPIs and performance metrics across all supply chain modules."
+        title={t('analyticsPage.title')}
+        description={t('analyticsPage.description')}
         icon="📊"
-        action={{ label: 'Export Report' }}
+        action={{ label: t('analyticsPage.exportReport') }}
       />
 
       {/* Top KPIs */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        <StatCard label="Overall Supply Chain Score" value="91 / 100"  trendValue="2 pts"  trend="up"   sub="vs last month"       icon="🏆" accent={colors.success} />
-        <StatCard label="Total Spend (April)"        value="$108,420"  trendValue="8%"     trend="up"   sub="vs March"            icon="💰" />
-        <StatCard label="Active Alerts"              value="3"         trendValue="2"      trend="down" sub="resolved this week"   icon="🔔" accent={colors.warning} />
-        <StatCard label="AI Insights Generated"      value="18"        sub="last 7 days"                                          icon="🧠" accent={colors.info} />
+        <StatCard label={t('analyticsPage.kpi1Label')} value="91 / 100"  trendValue="2 pts"  trend="up"   sub={t('analyticsPage.kpi1Sub')}  icon="🏆" accent={colors.success} />
+        <StatCard label={t('analyticsPage.kpi2Label')} value="$108,420"  trendValue="8%"     trend="up"   sub={t('analyticsPage.kpi2Sub')}  icon="💰" />
+        <StatCard label={t('analyticsPage.kpi3Label')} value="3"         trendValue="2"      trend="down" sub={t('analyticsPage.kpi3Sub')}  icon="🔔" accent={colors.warning} />
+        <StatCard label={t('analyticsPage.kpi4Label')} value="18"        sub={t('analyticsPage.kpi4Sub')}                                   icon="🧠" accent={colors.info} />
       </div>
 
       {/* Charts row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 28 }}>
         {/* Spend over time */}
         <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow }}>
-          <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>Monthly Spend</div>
-          <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>Last 6 months · USD</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>{t('analyticsPage.chartSpendTitle')}</div>
+          <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>{t('analyticsPage.chartSpendSub')}</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height: 120 }}>
             {[78400, 92100, 105600, 88200, 95400, 108420].map((v, i) => {
               const months = ['Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'];
@@ -91,13 +110,13 @@ export default function AnalyticsPage() {
 
         {/* Module performance */}
         <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow }}>
-          <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>Module Performance</div>
-          <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>Score out of 100</div>
+          <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>{t('analyticsPage.chartPerfTitle')}</div>
+          <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>{t('analyticsPage.chartPerfSub')}</div>
           {[
-            { label: 'Mining',      score: 91, color: colors.mining },
-            { label: 'Logistics',   score: 87, color: colors.info },
-            { label: 'Procurement', score: 94, color: '#7c3aed' },
-            { label: 'Inventory',   score: 89, color: colors.success },
+            { label: t('modules.mining.name'),      score: 91, color: colors.mining },
+            { label: t('modules.logistics.name'),   score: 87, color: colors.info },
+            { label: t('modules.procurement.name'), score: 94, color: '#7c3aed' },
+            { label: t('modules.inventory.name'),   score: 89, color: colors.success },
           ].map((m) => (
             <div key={m.label} style={{ marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -114,7 +133,7 @@ export default function AnalyticsPage() {
 
       {/* KPI table */}
       <DataTable<KpiRow>
-        title="All KPIs — Detailed View"
+        title={t('analyticsPage.kpiTableTitle')}
         columns={kpiCols}
         rows={KPIS}
       />

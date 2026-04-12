@@ -73,7 +73,7 @@ export default function PageHeader({ title, description, icon, action, accentCol
             gap: 6,
           }}
         >
-          + {action.label}
+          {action.label}
         </button>
       )}
     </div>

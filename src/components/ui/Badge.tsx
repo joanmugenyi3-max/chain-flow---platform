@@ -14,13 +14,16 @@ const VARIANT_STYLES: Record<BadgeVariant, { bg: string; color: string; border: 
 };
 
 interface BadgeProps {
-  label: string;
   variant?: BadgeVariant;
   dot?: boolean;
+  children?: React.ReactNode;
+  /** @deprecated Use children instead */
+  label?: string;
 }
 
-export default function Badge({ label, variant = 'neutral', dot = true }: BadgeProps) {
+export default function Badge({ label, variant = 'neutral', dot = false, children }: BadgeProps) {
   const s = VARIANT_STYLES[variant];
+  const content = children ?? label ?? '';
   return (
     <span style={{
       display: 'inline-flex',
@@ -44,7 +47,7 @@ export default function Badge({ label, variant = 'neutral', dot = true }: BadgeP
           flexShrink: 0,
         }} />
       )}
-      {label}
+      {content}
     </span>
   );
 }

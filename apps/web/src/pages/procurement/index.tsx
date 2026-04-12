@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import PageLayout from '../../components/layout/PageLayout';
 import PageHeader from '../../components/ui/PageHeader';
 import StatCard from '../../components/ui/StatCard';
 import Badge from '../../components/ui/Badge';
 import DataTable, { Column } from '../../components/ui/DataTable';
+import { useTranslation } from '@/i18n/useTranslation';
 import { colors, radius, font } from '../../lib/styles';
 
 // ── Mock data ────────────────────────────────────────────────────────────────
@@ -31,11 +32,11 @@ const POS: PurchaseOrder[] = [
 ];
 
 const SUPPLIERS: Supplier[] = [
-  { id: 'SUP-001', name: 'CMCK Mining Supplies',   country: 'DRC',      category: 'Equipment',   rating: 4.7, activeContracts: 3, ytdSpend: '$198,400', status: 'active' },
-  { id: 'SUP-002', name: 'African Steel DRC',      country: 'DRC',      category: 'Materials',   rating: 4.1, activeContracts: 1, ytdSpend: '$87,200',  status: 'active' },
-  { id: 'SUP-003', name: 'SafetyFirst Africa',     country: 'South Africa', category: 'Safety',  rating: 4.8, activeContracts: 2, ytdSpend: '$45,100',  status: 'active' },
-  { id: 'SUP-004', name: 'Lubumbashi Tech',        country: 'DRC',      category: 'IT',          rating: 3.9, activeContracts: 1, ytdSpend: '$28,500',  status: 'active' },
-  { id: 'SUP-005', name: 'Kamoto Copper Company',  country: 'DRC',      category: 'Services',    rating: 4.5, activeContracts: 2, ytdSpend: '$112,000', status: 'active' },
+  { id: 'SUP-001', name: 'CMCK Mining Supplies',   country: 'DRC',          category: 'Equipment', rating: 4.7, activeContracts: 3, ytdSpend: '$198,400', status: 'active' },
+  { id: 'SUP-002', name: 'African Steel DRC',      country: 'DRC',          category: 'Materials', rating: 4.1, activeContracts: 1, ytdSpend: '$87,200',  status: 'active' },
+  { id: 'SUP-003', name: 'SafetyFirst Africa',     country: 'South Africa', category: 'Safety',    rating: 4.8, activeContracts: 2, ytdSpend: '$45,100',  status: 'active' },
+  { id: 'SUP-004', name: 'Lubumbashi Tech',        country: 'DRC',          category: 'IT',        rating: 3.9, activeContracts: 1, ytdSpend: '$28,500',  status: 'active' },
+  { id: 'SUP-005', name: 'Kamoto Copper Company',  country: 'DRC',          category: 'Services',  rating: 4.5, activeContracts: 2, ytdSpend: '$112,000', status: 'active' },
 ];
 
 const CONTRACTS: Contract[] = [
@@ -64,54 +65,6 @@ function StarRating({ value }: { value: number }) {
   );
 }
 
-// ── Columns ──────────────────────────────────────────────────────────────────
-const poCols: Column<PurchaseOrder>[] = [
-  { key: 'id',       label: 'PO Number', width: 130, render: (v) => <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13 }}>{String(v)}</span> },
-  { key: 'supplier', label: 'Supplier', render: (v, r) => (
-    <div>
-      <div style={{ fontWeight: 500, color: colors.slate900 }}>{String(v)}</div>
-      <div style={{ fontSize: 12, color: colors.slate400 }}>{r.category}</div>
-    </div>
-  )},
-  { key: 'date',     label: 'Date' },
-  { key: 'amount',   label: 'Amount',   align: 'right', render: (v) => <span style={{ fontWeight: 700, color: colors.slate900 }}>{String(v)}</span> },
-  { key: 'priority', label: 'Priority', render: (v) => <Badge label={String(v)} variant={priorityVariant(String(v))} /> },
-  { key: 'status',   label: 'Status',   render: (v) => {
-    const label = String(v).replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-    return <Badge label={label} variant={poStatusVariant(String(v))} />;
-  }},
-  { key: 'dueDate',  label: 'Due Date' },
-];
-
-const supplierCols: Column<Supplier>[] = [
-  { key: 'name',            label: 'Supplier', render: (v, r) => (
-    <div>
-      <div style={{ fontWeight: 600, color: colors.slate900 }}>{String(v)}</div>
-      <div style={{ fontSize: 12, color: colors.slate400 }}>{r.id} · {r.country}</div>
-    </div>
-  )},
-  { key: 'category',        label: 'Category' },
-  { key: 'rating',          label: 'Rating',   render: (v) => <StarRating value={Number(v)} /> },
-  { key: 'activeContracts', label: 'Contracts', align: 'center' },
-  { key: 'ytdSpend',        label: 'YTD Spend', align: 'right', render: (v) => <span style={{ fontWeight: 700 }}>{String(v)}</span> },
-  { key: 'status',          label: 'Status',   render: (v) => <Badge label={String(v).charAt(0).toUpperCase() + String(v).slice(1)} variant="success" /> },
-];
-
-const contractCols: Column<Contract>[] = [
-  { key: 'id',        label: 'ID',       width: 90 },
-  { key: 'title',     label: 'Contract', render: (v, r) => (
-    <div>
-      <div style={{ fontWeight: 500, color: colors.slate900 }}>{String(v)}</div>
-      <div style={{ fontSize: 12, color: colors.slate400 }}>{r.supplier}</div>
-    </div>
-  )},
-  { key: 'type',      label: 'Type',  render: (v) => <Badge label={String(v)} variant="neutral" dot={false} /> },
-  { key: 'value',     label: 'Value', align: 'right', render: (v) => <span style={{ fontWeight: 700 }}>{String(v)}</span> },
-  { key: 'startDate', label: 'Start Date' },
-  { key: 'endDate',   label: 'End Date' },
-  { key: 'status',    label: 'Status', render: (v) => <Badge label={String(v) === 'expiring_soon' ? 'Expiring Soon' : 'Active'} variant={String(v) === 'expiring_soon' ? 'warning' : 'success'} /> },
-];
-
 // ── Spend by category ─────────────────────────────────────────────────────────
 const SPEND_CATEGORIES = [
   { label: 'Equipment',  pct: 42, amount: '$198K' },
@@ -121,15 +74,15 @@ const SPEND_CATEGORIES = [
   { label: 'IT & Other', pct: 5,  amount: '$22K' },
 ];
 
-function SpendPanel() {
+function SpendPanel({ title, sub }: { title: string; sub: string }) {
   const barColors = [colors.primary, colors.info, colors.success, colors.warning, colors.slate400];
   return (
     <div style={{
       background: colors.white, border: `1px solid ${colors.border}`,
       borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow,
     }}>
-      <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>Spend by Category</div>
-      <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>YTD 2026</div>
+      <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 4, fontFamily: font.sans }}>{title}</div>
+      <div style={{ fontSize: 12, color: colors.slate400, marginBottom: 16, fontFamily: font.sans }}>{sub}</div>
       {SPEND_CATEGORIES.map((c, i) => (
         <div key={c.label} style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -146,11 +99,17 @@ function SpendPanel() {
   );
 }
 
-// ── Tab filter ────────────────────────────────────────────────────────────────
-const TABS = ['All', 'Pending Approval', 'Approved', 'Sent', 'Received'];
-
 export default function ProcurementPage() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('All');
+
+  const TABS = useMemo(() => [
+    { key: 'All',              label: t('procurementPage.tabAll') },
+    { key: 'Pending Approval', label: t('procurementPage.tabPendingApproval') },
+    { key: 'Approved',         label: t('procurementPage.tabApproved') },
+    { key: 'Sent',             label: t('procurementPage.tabSent') },
+    { key: 'Received',         label: t('procurementPage.tabReceived') },
+  ], [t]);
 
   const filtered = activeTab === 'All' ? POS : POS.filter(p => {
     const statusMap: Record<string, string> = {
@@ -160,21 +119,73 @@ export default function ProcurementPage() {
     return p.status === statusMap[activeTab];
   });
 
+  const poCols = useMemo<Column<PurchaseOrder>[]>(() => [
+    { key: 'id',       label: t('procurementPage.colPoNumber'), width: 130, render: (v) => <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13 }}>{String(v)}</span> },
+    { key: 'supplier', label: t('procurementPage.colSupplier'), render: (v, r) => (
+      <div>
+        <div style={{ fontWeight: 500, color: colors.slate900 }}>{String(v)}</div>
+        <div style={{ fontSize: 12, color: colors.slate400 }}>{r.category}</div>
+      </div>
+    )},
+    { key: 'date',     label: t('procurementPage.colDate') },
+    { key: 'amount',   label: t('procurementPage.colAmount'),   align: 'right', render: (v) => <span style={{ fontWeight: 700, color: colors.slate900 }}>{String(v)}</span> },
+    { key: 'priority', label: t('procurementPage.colPriority'), render: (v) => <Badge label={String(v)} variant={priorityVariant(String(v))} /> },
+    { key: 'status',   label: t('procurementPage.colStatus'),   render: (v) => {
+      const label = String(v).replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+      return <Badge label={label} variant={poStatusVariant(String(v))} />;
+    }},
+    { key: 'dueDate',  label: t('procurementPage.colDueDate') },
+  ], [t]);
+
+  const supplierCols = useMemo<Column<Supplier>[]>(() => [
+    { key: 'name',            label: t('procurementPage.colSupplier'), render: (v, r) => (
+      <div>
+        <div style={{ fontWeight: 600, color: colors.slate900 }}>{String(v)}</div>
+        <div style={{ fontSize: 12, color: colors.slate400 }}>{r.id} · {r.country}</div>
+      </div>
+    )},
+    { key: 'category',        label: t('procurementPage.colCategory') },
+    { key: 'rating',          label: t('procurementPage.colRating'),   render: (v) => <StarRating value={Number(v)} /> },
+    { key: 'activeContracts', label: t('procurementPage.colContracts'), align: 'center' },
+    { key: 'ytdSpend',        label: t('procurementPage.colYtdSpend'), align: 'right', render: (v) => <span style={{ fontWeight: 700 }}>{String(v)}</span> },
+    { key: 'status',          label: t('procurementPage.colStatus'),   render: (v) => <Badge label={String(v).charAt(0).toUpperCase() + String(v).slice(1)} variant="success" /> },
+  ], [t]);
+
+  const contractCols = useMemo<Column<Contract>[]>(() => [
+    { key: 'id',        label: t('procurementPage.colId'),       width: 90 },
+    { key: 'title',     label: t('procurementPage.colContract'), render: (v, r) => (
+      <div>
+        <div style={{ fontWeight: 500, color: colors.slate900 }}>{String(v)}</div>
+        <div style={{ fontSize: 12, color: colors.slate400 }}>{r.supplier}</div>
+      </div>
+    )},
+    { key: 'type',      label: t('procurementPage.colType'),  render: (v) => <Badge label={String(v)} variant="neutral" dot={false} /> },
+    { key: 'value',     label: t('procurementPage.colValue'), align: 'right', render: (v) => <span style={{ fontWeight: 700 }}>{String(v)}</span> },
+    { key: 'startDate', label: t('procurementPage.colStartDate') },
+    { key: 'endDate',   label: t('procurementPage.colEndDate') },
+    { key: 'status',    label: t('procurementPage.colStatus'), render: (v) => (
+      <Badge
+        label={String(v) === 'expiring_soon' ? t('common.status.expiringSoon') : t('common.status.actv')}
+        variant={String(v) === 'expiring_soon' ? 'warning' : 'success'}
+      />
+    )},
+  ], [t]);
+
   return (
     <PageLayout>
       <PageHeader
-        title="Procurement"
-        description="Manage purchase orders, suppliers, and contracts across your supply chain."
+        title={t('procurementPage.title')}
+        description={t('procurementPage.description')}
         icon="🛒"
-        action={{ label: 'New Purchase Order' }}
+        action={{ label: t('procurementPage.newPO') }}
       />
 
       {/* KPIs */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        <StatCard label="Total PO Value (Apr)"    value="$108,420"   trendValue="12%"  trend="up"   sub="vs March"         icon="💰" />
-        <StatCard label="Pending Approval"        value="1"          sub="1 PO awaiting review"     icon="⏳" accent={colors.warning} />
-        <StatCard label="Active Suppliers"        value="5"          trendValue="1"    trend="up"   sub="vs last quarter"  icon="🤝" accent={colors.success} />
-        <StatCard label="Expiring Contracts"      value="1"          sub="within 90 days"            icon="📋" accent={colors.danger} />
+        <StatCard label={t('procurementPage.kpi1Label')} value="$108,420"  trendValue="12%" trend="up"   sub={t('procurementPage.kpi1Sub')}  icon="💰" />
+        <StatCard label={t('procurementPage.kpi2Label')} value="1"         sub={t('procurementPage.kpi2Sub')}                                 icon="⏳" accent={colors.warning} />
+        <StatCard label={t('procurementPage.kpi3Label')} value="5"         trendValue="1"   trend="up"   sub={t('procurementPage.kpi3Sub')}  icon="🤝" accent={colors.success} />
+        <StatCard label={t('procurementPage.kpi4Label')} value="1"         sub={t('procurementPage.kpi4Sub')}                                 icon="📋" accent={colors.danger} />
       </div>
 
       {/* POs + Spend */}
@@ -184,35 +195,35 @@ export default function ProcurementPage() {
           <div style={{ display: 'flex', gap: 2, marginBottom: 16, background: colors.slate100, borderRadius: radius.lg, padding: 4, width: 'fit-content' }}>
             {TABS.map((tab) => (
               <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
                 style={{
                   padding: '6px 14px', borderRadius: radius.md, border: 'none',
-                  background: activeTab === tab ? colors.white : 'transparent',
-                  color: activeTab === tab ? colors.slate900 : colors.slate500,
-                  fontWeight: activeTab === tab ? 600 : 400,
+                  background: activeTab === tab.key ? colors.white : 'transparent',
+                  color: activeTab === tab.key ? colors.slate900 : colors.slate500,
+                  fontWeight: activeTab === tab.key ? 600 : 400,
                   fontSize: 13, cursor: 'pointer', fontFamily: font.sans,
-                  boxShadow: activeTab === tab ? colors.shadow : 'none',
+                  boxShadow: activeTab === tab.key ? colors.shadow : 'none',
                   transition: 'all 0.15s',
                 }}
               >
-                {tab}
+                {tab.label}
               </button>
             ))}
           </div>
           <DataTable<PurchaseOrder>
-            title="Purchase Orders"
+            title={t('procurementPage.poTableTitle')}
             columns={poCols}
             rows={filtered}
           />
         </div>
-        <SpendPanel />
+        <SpendPanel title={t('procurementPage.spendTitle')} sub={t('procurementPage.spendSub')} />
       </div>
 
       {/* Suppliers */}
       <div style={{ marginBottom: 28 }}>
         <DataTable<Supplier>
-          title="Approved Suppliers"
+          title={t('procurementPage.supplierTableTitle')}
           columns={supplierCols}
           rows={SUPPLIERS}
         />
@@ -220,7 +231,7 @@ export default function ProcurementPage() {
 
       {/* Contracts */}
       <DataTable<Contract>
-        title="Active Contracts"
+        title={t('procurementPage.contractTableTitle')}
         columns={contractCols}
         rows={CONTRACTS}
       />

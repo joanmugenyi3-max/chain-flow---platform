@@ -14,10 +14,11 @@ interface DataTableProps<T> {
   rows: T[];
   title?: string;
   emptyMessage?: string;
+  loading?: boolean;
 }
 
 export default function DataTable<T extends Record<string, unknown>>({
-  columns, rows, title, emptyMessage = 'No data available.'
+  columns, rows, title, emptyMessage = 'No data available.', loading = false,
 }: DataTableProps<T>) {
   return (
     <div style={{
@@ -68,7 +69,17 @@ export default function DataTable<T extends Record<string, unknown>>({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <tr key={i} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                  {columns.map((col) => (
+                    <td key={String(col.key)} style={{ padding: '13px 20px' }}>
+                      <div style={{ height: 14, borderRadius: 4, background: colors.slate100, width: '70%' }} />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : rows.length === 0 ? (
               <tr>
                 <td
                   colSpan={columns.length}
@@ -82,8 +93,7 @@ export default function DataTable<T extends Record<string, unknown>>({
                   {emptyMessage}
                 </td>
               </tr>
-            ) : (
-              rows.map((row, i) => (
+            ) : rows.map((row, i) => (
                 <tr
                   key={i}
                   style={{

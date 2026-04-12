@@ -1,189 +1,170 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PageLayout from '@/components/layout/PageLayout';
+import ModuleGuard from '@/components/layout/ModuleGuard';
 import PageHeader from '@/components/ui/PageHeader';
 import StatCard from '@/components/ui/StatCard';
 import Badge from '@/components/ui/Badge';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import { useShipments } from '@/modules/logistics/hooks/useShipments';
+import type { Shipment, ShipmentStatus } from '@/modules/logistics/types';
 import { colors, radius, font } from '@/lib/styles';
 
-// ── Mock data ────────────────────────────────────────────────────────────────
-interface Shipment {
-  id: string; origin: string; destination: string; carrier: string;
-  status: string; eta: string; items: number; weight: string;
-}
-interface Vehicle {
-  id: string; plate: string; type: string; driver: string;
-  status: string; location: string; nextMaintenance: string;
-}
-interface Route {
-  id: string; name: string; stops: number; distanceKm: number;
-  vehicle: string; estimatedMin: number; status: string;
-}
+const STATUS_VARIANT: Record<ShipmentStatus, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
+  PENDING:    'neutral',
+  IN_TRANSIT: 'info',
+  DELIVERED:  'success',
+  DELAYED:    'danger',
+  CANCELLED:  'neutral',
+};
 
-const SHIPMENTS: Shipment[] = [
-  { id: 'SHP-1041', origin: 'Warehouse A — Kinshasa', destination: 'Site Nord — Kolwezi', carrier: 'TransAfrique',  status: 'in_transit',  eta: '2026-04-11', items: 24, weight: '3.2 t' },
-  { id: 'SHP-1040', origin: 'Supplier CMCK',          destination: 'Warehouse B — Lubumbashi', carrier: 'FastCargo',  status: 'delivered',   eta: '2026-04-09', items: 8,  weight: '0.9 t' },
-  { id: 'SHP-1039', origin: 'Warehouse A — Kinshasa', destination: 'Site Sud — Likasi',   carrier: 'TransAfrique',  status: 'delayed',     eta: '2026-04-12', items: 15, weight: '2.1 t' },
-  { id: 'SHP-1038', origin: 'Supplier KAMOTO',        destination: 'Site Nord — Kolwezi', carrier: 'MineLog DRC',   status: 'in_transit',  eta: '2026-04-10', items: 6,  weight: '18.5 t' },
-  { id: 'SHP-1037', origin: 'Warehouse C — Likasi',   destination: 'Port — Dar es Salaam',carrier: 'OceanLink',    status: 'pending',     eta: '2026-04-15', items: 42, weight: '12.0 t' },
-  { id: 'SHP-1036', origin: 'Site Est',               destination: 'Warehouse A — Kinshasa', carrier: 'FastCargo', status: 'delivered',   eta: '2026-04-07', items: 3,  weight: '0.4 t' },
+const FILTERS = [
+  { label: 'All',        value: 'ALL' },
+  { label: 'In Transit', value: 'IN_TRANSIT' },
+  { label: 'Delayed',    value: 'DELAYED' },
+  { label: 'Delivered',  value: 'DELIVERED' },
+  { label: 'Pending',    value: 'PENDING' },
 ];
 
-const VEHICLES: Vehicle[] = [
-  { id: 'VH-01', plate: 'KIN-4821-A', type: 'Heavy Truck', driver: 'Jean Mukeba',    status: 'on_route',    location: 'N1 Highway, km 340', nextMaintenance: '2026-05-01' },
-  { id: 'VH-02', plate: 'LUB-3310-B', type: 'Van',        driver: 'Paul Ilunga',     status: 'available',   location: 'Lubumbashi Depot',   nextMaintenance: '2026-04-20' },
-  { id: 'VH-03', plate: 'KOL-7712-C', type: 'Heavy Truck', driver: 'André Mwamba',  status: 'on_route',    location: 'RN39, km 88',        nextMaintenance: '2026-06-15' },
-  { id: 'VH-04', plate: 'LUB-0094-D', type: 'Pickup',     driver: 'Unassigned',      status: 'maintenance', location: 'Workshop Lubumbashi', nextMaintenance: '2026-04-10' },
-  { id: 'VH-05', plate: 'KIN-5503-E', type: 'Van',        driver: 'Christophe Ngoy', status: 'available',   location: 'Kinshasa Depot',     nextMaintenance: '2026-05-22' },
-];
-
-const ROUTES: Route[] = [
-  { id: 'RT-11', name: 'Kinshasa → Kolwezi',      stops: 3, distanceKm: 1840, vehicle: 'KIN-4821-A', estimatedMin: 1440, status: 'active' },
-  { id: 'RT-12', name: 'Lubumbashi → Site Nord',  stops: 2, distanceKm: 320,  vehicle: 'LUB-3310-B', estimatedMin: 240,  status: 'planned' },
-  { id: 'RT-13', name: 'Site Sud → Port Dar',     stops: 5, distanceKm: 2100, vehicle: 'KOL-7712-C', estimatedMin: 1680, status: 'active' },
-  { id: 'RT-14', name: 'Likasi → Warehouse A',   stops: 1, distanceKm: 205,  vehicle: 'KIN-5503-E', estimatedMin: 180,  status: 'planned' },
-];
-
-const shipmentStatusVariant = (s: string) =>
-  ({ in_transit: 'info', delivered: 'success', delayed: 'danger', pending: 'neutral' } as Record<string, 'info'|'success'|'danger'|'neutral'>)[s] ?? 'neutral';
-
-const vehicleStatusVariant = (s: string) =>
-  ({ on_route: 'info', available: 'success', maintenance: 'warning' } as Record<string, 'info'|'success'|'warning'>)[s] ?? 'neutral';
-
-// ── Columns ──────────────────────────────────────────────────────────────────
-const shipCols: Column<Shipment>[] = [
-  { key: 'id',          label: 'Shipment ID', width: 100 },
-  { key: 'origin',      label: 'From → To', render: (v, r) => (
-    <div>
-      <div style={{ fontWeight: 500, color: colors.slate900, fontSize: 14 }}>📍 {String(v)}</div>
-      <div style={{ fontSize: 12, color: colors.slate400, marginTop: 2 }}>→ {r.destination}</div>
-    </div>
-  )},
-  { key: 'carrier',     label: 'Carrier' },
-  { key: 'status',      label: 'Status',  render: (v) => {
-    const label = String(v).replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-    return <Badge label={label} variant={shipmentStatusVariant(String(v))} />;
-  }},
-  { key: 'eta',         label: 'ETA' },
-  { key: 'items',       label: 'Items', align: 'right' },
-  { key: 'weight',      label: 'Weight', align: 'right' },
-];
-
-const vehCols: Column<Vehicle>[] = [
-  { key: 'plate',   label: 'Plate',  width: 120, render: (v) => <span style={{ fontFamily: 'monospace', fontWeight: 600, fontSize: 13 }}>{String(v)}</span> },
-  { key: 'type',    label: 'Type' },
-  { key: 'driver',  label: 'Driver', render: (v, r) => (
-    <div>
-      <div style={{ fontWeight: 500, color: colors.slate800 }}>{String(v)}</div>
-      <div style={{ fontSize: 11, color: colors.slate400 }}>{r.id}</div>
-    </div>
-  )},
-  { key: 'status',  label: 'Status', render: (v) => {
-    const label = String(v).replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-    return <Badge label={label} variant={vehicleStatusVariant(String(v))} />;
-  }},
-  { key: 'location', label: 'Current Location', render: (v) => <span style={{ fontSize: 13, color: colors.slate500 }}>{String(v)}</span> },
-  { key: 'nextMaintenance', label: 'Next Maintenance', align: 'right' },
-];
-
-const routeCols: Column<Route>[] = [
-  { key: 'id',           label: 'ID',       width: 80 },
-  { key: 'name',         label: 'Route' },
-  { key: 'stops',        label: 'Stops',    align: 'center' },
-  { key: 'distanceKm',   label: 'Distance', align: 'right', render: (v) => `${Number(v).toLocaleString()} km` },
-  { key: 'vehicle',      label: 'Vehicle',  render: (v) => <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600 }}>{String(v)}</span> },
-  { key: 'estimatedMin', label: 'Est. Duration', align: 'right', render: (v) => {
-    const h = Math.floor(Number(v) / 60);
-    const m = Number(v) % 60;
-    return `${h}h ${m > 0 ? m + 'm' : ''}`;
-  }},
-  { key: 'status', label: 'Status', render: (v) => <Badge label={String(v).charAt(0).toUpperCase() + String(v).slice(1)} variant={String(v) === 'active' ? 'info' : 'neutral'} /> },
-];
-
-// ── Map placeholder ───────────────────────────────────────────────────────────
-function MapPlaceholder() {
-  const dots = [
-    { label: 'Kinshasa', x: 18, y: 52 },
-    { label: 'Lubumbashi', x: 62, y: 68 },
-    { label: 'Kolwezi', x: 48, y: 61 },
-    { label: 'Likasi', x: 60, y: 63 },
-  ];
-  return (
-    <div style={{
-      background: colors.white, border: `1px solid ${colors.border}`,
-      borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow,
-    }}>
-      <div style={{ fontWeight: 600, fontSize: 15, color: colors.slate900, marginBottom: 16, fontFamily: font.sans }}>
-        Fleet Map — Live Positions
-      </div>
-      <div style={{
-        position: 'relative', background: '#e8f4e8',
-        borderRadius: radius.md, height: 180, overflow: 'hidden',
-        border: `1px solid ${colors.border}`,
-      }}>
-        <div style={{ position: 'absolute', inset: 0, opacity: 0.08, background: 'repeating-linear-gradient(0deg, #000 0, #000 1px, transparent 1px, transparent 40px), repeating-linear-gradient(90deg, #000 0, #000 1px, transparent 1px, transparent 40px)' }} />
-        {dots.map((d) => (
-          <div key={d.label} style={{ position: 'absolute', left: `${d.x}%`, top: `${d.y}%`, transform: 'translate(-50%,-50%)' }}>
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: colors.primary, border: `2px solid white`, boxShadow: `0 0 0 3px ${colors.primary}40` }} />
-            <div style={{ background: colors.slate900, color: 'white', fontSize: 10, padding: '1px 5px', borderRadius: 3, marginTop: 3, whiteSpace: 'nowrap', fontFamily: font.sans }}>{d.label}</div>
-          </div>
-        ))}
-        <div style={{ position: 'absolute', bottom: 8, right: 8, fontSize: 10, color: colors.slate400, fontFamily: font.sans }}>DRC — Central Africa</div>
-      </div>
-      <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <Badge label="2 On Route" variant="info" />
-        <Badge label="2 Available" variant="success" />
-        <Badge label="1 Maintenance" variant="warning" />
-      </div>
-    </div>
-  );
-}
-
-// ── Page ─────────────────────────────────────────────────────────────────────
 export default function LogisticsPage() {
+  const [activeFilter, setActiveFilter] = useState('ALL');
+  const { shipments, loading } = useShipments(activeFilter);
+
+  const inTransit = shipments.filter(s => s.status === 'IN_TRANSIT').length;
+  const delayed   = shipments.filter(s => s.status === 'DELAYED').length;
+  const delivered = shipments.filter(s => s.status === 'DELIVERED').length;
+
+  const cols: Column<Shipment>[] = [
+    {
+      key: 'trackingNumber', label: 'Tracking #', width: 150,
+      render: (v) => <span style={{ fontFamily: font.sans, fontWeight: 700, fontSize: 13, color: colors.primary }}>{String(v)}</span>,
+    },
+    { key: 'carrier', label: 'Carrier' },
+    { key: 'type',   label: 'Type', render: (v) => <Badge variant="neutral">{String(v)}</Badge> },
+    {
+      key: 'status', label: 'Status',
+      render: (v) => <Badge variant={STATUS_VARIANT[v as ShipmentStatus]}>{String(v).replace('_', ' ')}</Badge>,
+    },
+    {
+      key: 'origin', label: 'Route',
+      render: (v, row) => (
+        <span style={{ fontSize: 13, color: colors.slate700, fontFamily: font.sans }}>
+          {String(v)} <span style={{ color: colors.slate400 }}>→</span> {row.destination}
+        </span>
+      ),
+    },
+    { key: 'items',  label: 'Items', align: 'right', render: (v) => <span style={{ fontWeight: 700, color: colors.slate900 }}>{String(v)}</span> },
+    { key: 'weight', label: 'Weight', align: 'right', render: (v) => <span style={{ fontSize: 13, color: colors.slate500 }}>{String(v)}</span> },
+    {
+      key: 'estimatedArrival', label: 'ETA',
+      render: (v, row) => (
+        <div>
+          <div style={{ fontSize: 13, color: row.status === 'DELAYED' ? colors.danger : colors.slate700, fontWeight: row.status === 'DELAYED' ? 600 : 400, fontFamily: font.sans }}>
+            {String(v).slice(0, 10)}
+          </div>
+          {row.status === 'DELAYED' && <div style={{ fontSize: 11, color: colors.danger, fontFamily: font.sans }}>Delayed</div>}
+        </div>
+      ),
+    },
+    {
+      key: 'driverName', label: 'Driver',
+      render: (v) => v ? <span style={{ fontSize: 13, color: colors.slate600, fontFamily: font.sans }}>{String(v)}</span> : <span style={{ color: colors.slate300 }}>—</span>,
+    },
+  ];
+
   return (
     <PageLayout>
-      <PageHeader
-        title="Logistics"
-        description="Track shipments in real time, manage your fleet and optimize delivery routes."
-        icon="🚛"
-        action={{ label: 'New Shipment' }}
-        accentColor={colors.primary}
-      />
+      <ModuleGuard moduleId="logistics">
+        <PageHeader
+          title="Logistics"
+          description="Shipment tracking, fleet management and route optimization."
+          icon="🚛"
+          accentColor={colors.info}
+          action={{ label: '+ New Shipment' }}
+        />
 
-      {/* KPIs */}
-      <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
-        <StatCard label="Active Shipments"    value="14"       trendValue="3"     trend="up"   sub="vs last week"      icon="📦" />
-        <StatCard label="On-Time Delivery"    value="87.3%"    trendValue="2.1%"  trend="up"   sub="last 30 days"      icon="✅" accent={colors.success} />
-        <StatCard label="Delayed"             value="2"        trendValue="1"     trend="down" sub="SHP-1039 · SHP-1035" icon="⚠️" accent={colors.warning} />
-        <StatCard label="Fleet Availability"  value="80%"      sub="4 of 5 vehicles"           icon="🚛" accent={colors.info} />
-      </div>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 28, flexWrap: 'wrap' }}>
+          <StatCard label="Active Shipments"  value={String(inTransit)} sub="in transit"                              icon="🚛" accent={colors.info} />
+          <StatCard label="Delayed"           value={String(delayed)}   trendValue="2" trend="down" sub="vs last week" icon="⏰" accent={colors.danger} />
+          <StatCard label="Delivered"         value={String(delivered)} sub="this month"                               icon="✅" accent={colors.success} />
+          <StatCard label="OTD Rate"          value="87.3%"             trendValue="2.1%" trend="up" sub="on-time delivery" icon="📈" />
+        </div>
 
-      {/* Shipments + Map */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, marginBottom: 28, alignItems: 'start' }}>
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setActiveFilter(f.value)}
+              style={{
+                padding: '6px 16px', borderRadius: radius.full, border: 'none',
+                background: activeFilter === f.value ? colors.info : colors.slate100,
+                color: activeFilter === f.value ? colors.white : colors.slate600,
+                fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: font.sans,
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
         <DataTable<Shipment>
-          title="Active Shipments"
-          columns={shipCols}
-          rows={SHIPMENTS}
+          title="Shipments"
+          columns={cols}
+          rows={shipments}
+          loading={loading}
+          emptyMessage="No shipments found."
         />
-        <MapPlaceholder />
-      </div>
 
-      {/* Fleet */}
-      <div style={{ marginBottom: 28 }}>
-        <DataTable<Vehicle>
-          title="Fleet Management"
-          columns={vehCols}
-          rows={VEHICLES}
-        />
-      </div>
+        {/* Fleet overview */}
+        <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          {/* Fleet status */}
+          <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: colors.slate900, fontFamily: font.sans }}>Fleet Status</h3>
+            {[
+              { id: 'TRK-001', type: '🚛 Truck',    plate: 'GP 12-34', status: 'ON_ROUTE',    driver: 'Themba M.',   loc: 'N1 Highway' },
+              { id: 'TRK-002', type: '🚛 Truck',    plate: 'LP 56-78', status: 'AVAILABLE',   driver: 'Rudi B.',     loc: 'WH-Central' },
+              { id: 'VAN-001', type: '🚐 Van',      plate: 'GP 90-12', status: 'ON_ROUTE',    driver: 'Faith N.',    loc: 'Durban Port' },
+              { id: 'TRK-003', type: '🚛 Truck',    plate: 'KZN 34-56', status: 'MAINTENANCE', driver: '—',           loc: 'Service Bay' },
+            ].map((v, i, arr) => {
+              const sc = v.status === 'AVAILABLE' ? colors.success : v.status === 'ON_ROUTE' ? colors.info : colors.warning;
+              return (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '9px 0', borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
+                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: sc, marginTop: 5, flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: colors.slate900, fontFamily: font.sans }}>{v.type} · {v.plate}</div>
+                    <div style={{ fontSize: 12, color: colors.slate400, fontFamily: font.sans }}>{v.driver} · {v.loc}</div>
+                  </div>
+                  <Badge variant={v.status === 'AVAILABLE' ? 'success' : v.status === 'ON_ROUTE' ? 'info' : 'warning'}>
+                    {v.status.replace('_', ' ')}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
 
-      {/* Routes */}
-      <DataTable<Route>
-        title="Optimized Routes"
-        columns={routeCols}
-        rows={ROUTES}
-      />
+          {/* Route performance */}
+          <div style={{ background: colors.white, border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: '20px 24px', boxShadow: colors.shadow }}>
+            <h3 style={{ margin: '0 0 14px', fontSize: 15, fontWeight: 600, color: colors.slate900, fontFamily: font.sans }}>Top Routes</h3>
+            {[
+              { route: 'JHB → Limpopo',   avgDays: 1.2, otd: 94, shipments: 28 },
+              { route: 'JHB → Durban',    avgDays: 2.1, otd: 91, shipments: 19 },
+              { route: 'Limpopo → WH-N',  avgDays: 0.8, otd: 97, shipments: 14 },
+              { route: 'JHB → Cape Town', avgDays: 4.3, otd: 78, shipments: 9  },
+            ].map((r, i, arr) => (
+              <div key={r.route} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: i < arr.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: colors.slate900, fontFamily: font.sans }}>{r.route}</div>
+                  <div style={{ fontSize: 12, color: colors.slate400, fontFamily: font.sans }}>Avg {r.avgDays}d · {r.shipments} shipments</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontWeight: 700, fontSize: 14, color: r.otd >= 90 ? colors.success : r.otd >= 80 ? colors.warning : colors.danger, fontFamily: font.sans }}>{r.otd}%</div>
+                  <div style={{ fontSize: 11, color: colors.slate400, fontFamily: font.sans }}>OTD</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ModuleGuard>
     </PageLayout>
   );
 }

@@ -1,0 +1,12 @@
+[
+  {
+    "id": "user-001",
+    "tenantId": "demo",
+    "fullName": "JoeObscura",
+    "email": "joe@acme-mining.com",
+    "role": "ADMIN",
+    "initials": "JO",
+    "avatarColor": "#2563eb",
+    "isActive": true
+  }
+]

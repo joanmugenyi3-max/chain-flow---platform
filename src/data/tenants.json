@@ -1,0 +1,14 @@
+[
+  {
+    "id": "demo",
+    "name": "ACME Mining Corp",
+    "slug": "acme-mining",
+    "plan": "MINING_ENTERPRISE",
+    "industry": "Mining",
+    "country": "DRC",
+    "currency": "USD",
+    "timezone": "Africa/Kinshasa",
+    "createdAt": "2026-04-12T10:54:59.913Z",
+    "updatedAt": "2026-04-12T10:54:59.913Z"
+  }
+]

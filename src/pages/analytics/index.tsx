@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import PageLayout from '@/components/layout/PageLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import StatCard from '@/components/ui/StatCard';
@@ -20,17 +20,33 @@ const KPIS: KpiRow[] = [
   { module: 'Mining',      metric: 'LTIFR (rolling 12mo)',    value: '0.42',      vs: '-0.08 vs last year',  trend: 'up' },
 ];
 
-// Sparkline bar visual
+// Sparkline bar visual — uses client-only random values to avoid hydration mismatch
 function MiniBar({ value, max, color }: { value: number; max: number; color: string }) {
-  const bars = Array.from({ length: 8 }, (_, i) =>
-    Math.round(max * (0.6 + Math.random() * 0.4))
-  );
-  bars[bars.length - 1] = value;
-  const barMax = Math.max(...bars);
+  const [bars, setBars] = useState<number[]>(Array(8).fill(value));
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    const generated = Array.from({ length: 8 }, (_, i) =>
+      i === 7 ? value : Math.round(max * (0.6 + Math.random() * 0.4))
+    );
+    setBars(generated);
+    setMounted(true);
+  }, [value, max]);
+
+  const barMax = Math.max(...bars, 1);
   return (
     <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 28 }}>
       {bars.map((b, i) => (
-        <div key={i} style={{ width: 6, height: `${(b / barMax) * 100}%`, background: i === bars.length - 1 ? color : color + '40', borderRadius: 2 }} />
+        <div
+          key={i}
+          style={{
+            width: 6,
+            height: `${(b / barMax) * 100}%`,
+            background: i === bars.length - 1 ? color : color + '40',
+            borderRadius: 2,
+            transition: mounted ? 'height 0.3s ease' : 'none',
+          }}
+        />
       ))}
     </div>
   );
